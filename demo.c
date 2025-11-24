@@ -5,6 +5,7 @@
 #include "ddsctx.hpp"
 
 int reader_have_data = 0;
+char buffer[256] = { 0 };
 
 void reader_callback(
     int event,
@@ -26,7 +27,7 @@ int main_sub(int argc, char* argv[]) {
             ddsctx_read(DDS_DOMAIN_DEFAULT, "topic_demo", demomsg_0);
             DemoMsg* msg = (DemoMsg*)ddsctx_get_data(demomsg_0);
             if(ddsctx_get_valid(demomsg_0))
-                printf ("data=%d\n", msg->data);
+                printf ("data=%s\n", msg->data);
             reader_have_data = 0;
         }
     }
@@ -42,10 +43,11 @@ int main_pub(int argc, char* argv[]) {
     ddsctx_writer(DDS_DOMAIN_DEFAULT, "topic_demo", "qos_demo");
 
     sleep(1);
-    msg.data = 0;
+    int data = 0;
     while(1) {
-        msg.data++;
-        printf("data=%d\n", msg.data);
+        snprintf(buffer, sizeof(buffer), "DDS_DATA:%d", data++);
+        msg.data = buffer;
+        printf("data=%s\n", msg.data);
         ddsctx_send(DDS_DOMAIN_DEFAULT, "topic_demo", &msg);
         sleep(1);
     }

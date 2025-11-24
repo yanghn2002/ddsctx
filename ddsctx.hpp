@@ -87,21 +87,35 @@ class DDS final {
 
     class Sample final {
 
-        friend class DDS;
-
         void* _sample[1];
         dds_sample_info_t _info[1];
         const dds_topic_descriptor_t* _descriptor;
+        bool _alloced;
+
+        void _alloced_check(void) {
+            if(!_alloced) throw std::logic_error("invaild sample");
+        }
 
         public:
 
-            Sample(void) {
+            Sample(void): _alloced(false) {
                 _sample[0] = nullptr;
             }
 
-            Sample(const size_t size, const dds_topic_descriptor_t* descriptor)
-            : _descriptor(descriptor) {
+            void operator()(const size_t size, const dds_topic_descriptor_t* descriptor) {
+                _descriptor = descriptor;
                 _sample[0] = dds_alloc(size);
+                _alloced = true;
+            }
+
+            dds_sample_info_t* info(void) {
+                _alloced_check();
+                return _info;
+            }
+
+            void** sample(void) {
+                _alloced_check();
+                return _sample;
             }
 
             ~Sample(void) {
@@ -187,7 +201,7 @@ class DDS final {
 
             auto iterator = dds._sample.find(index);
             if(iterator == dds._sample.end())
-                dds._sample[index] = Sample(size, descriptor);
+                dds._sample[index](size, descriptor);
 
         }
         
@@ -336,7 +350,7 @@ class DDS final {
             if(sample_iterator == dds._sample.end()) throw dds._unknow_sample(sample);
             auto& [reader, listener, callback] = dds._reader[{domainid, topic}];
             Sample& sample_obj = dds._sample[sample];
-            dds_return_t read = dds_read(reader, sample_obj._sample, sample_obj._info, 1, 1);
+            dds_return_t read = dds_read(reader, sample_obj.sample(), sample_obj.info(), 1, 1);
             if(read < 0) throw DDSError("dds_read", read);
 
         }
@@ -392,7 +406,7 @@ class DDS final {
             
             auto iterator = dds._sample.find(sample);
             if(iterator == dds._sample.end()) throw dds._unknow_sample(sample);
-            return dds._sample[sample]._sample[0];
+            return dds._sample[sample].sample()[0];
         }
 
         static int get_valid(int sample) {
@@ -401,7 +415,7 @@ class DDS final {
             
             auto iterator = dds._sample.find(sample);
             if(iterator == dds._sample.end()) throw dds._unknow_sample(sample);
-            return dds._sample[sample]._info[0].valid_data == 1 ? 1 : 0;
+            return dds._sample[sample].info()[0].valid_data == 1 ? 1 : 0;
         }
 
         private:
