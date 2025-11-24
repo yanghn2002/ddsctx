@@ -4,7 +4,18 @@
 #include <dds/dds.h>
 
 enum ddsctx_event {
-    READER_ON_DATA_AVAILABLE,
+    DDSCTX_TOPIC_ON_INCONSISTENT_TOPIC          = 0x00,
+    DDSCTX_READER_ON_DATA_AVAILABLE             = 0x10,
+    DDSCTX_READER_ON_SUBSCRIPTION_MATCHED       = 0x11,
+    DDSCTX_READER_ON_SAMPLE_LOST                = 0x12,
+    DDSCTX_READER_ON_SAMPLE_REJECTED            = 0x13,
+    DDSCTX_READER_ON_LIVELINESS_CHANGED         = 0x14,
+    DDSCTX_READER_ON_REQUESTED_DEADLINE_MISSED  = 0x15,
+    DDSCTX_READER_ON_REQUESTED_INCOMPATIBLE_QOS = 0x16,
+    DDSCTX_WRITER_ON_PUBLICATION_MATCHED        = 0x20,
+    DDSCTX_WRITER_ON_LIVELINESS_LOST            = 0x21,
+    DDSCTX_WRITER_ON_OFFERED_DEADLINE_MISSED    = 0x22,
+    DDSCTX_WRITER_ON_OFFERED_INCOMPATIBLE_QOS   = 0x23,
 };
 
 #ifndef __cplusplus
@@ -130,7 +141,7 @@ class DDS final {
     std::map<dds_domainid_t, dds_entity_t> _domain;
     std::map<
         std::pair<dds_domainid_t, std::string>,
-        std::tuple<dds_entity_t,
+        std::tuple<dds_entity_t, dds_listener_t*,
             void(*)(int, const dds_domainid_t, const char*)>
     > _topic;
     std::map<
@@ -240,18 +251,21 @@ class DDS final {
 
             auto iterator = dds._topic.find({domainid, name});
             if(iterator == dds._topic.end()) {
+                dds_listener_t* listener = dds_create_listener(NULL);
+                dds_lset_inconsistent_topic(listener, _on_inconsistent_topic);
                 dds_entity_t topic = dds_create_topic(
                     dds.domain(domainid),
                     descriptor,
                     name.c_str(),
                     dds.qos(qos),
-                    NULL);
+                    listener
+                );
                 if(topic < 0) throw DDSError("dds_create_topic", topic);
-                dds._topic[{domainid, name}] = {topic, nullptr};
+                dds._topic[{domainid, name}] = {topic, listener, nullptr};
                 dds._entities[topic] = {domainid, name};
                 return topic;
             } else {
-                auto& [topic, callback] = dds._topic[{domainid, name}];
+                auto& [topic, listener, callback] = dds._topic[{domainid, name}];
                 return topic;
             }
 
@@ -271,7 +285,13 @@ class DDS final {
                 if(topic_iterator == dds._topic.end()) throw dds._unknow_topic(topic, domainid);
                 dds_listener_t* listener = dds_create_listener(NULL);
                 dds_lset_data_available(listener, _on_data_available);
-                auto& [topic_entity, callback] = dds._topic[{domainid, topic}];
+                dds_lset_subscription_matched(listener, _on_subscription_matched);
+                dds_lset_sample_lost(listener, _on_sample_lost);
+                dds_lset_sample_rejected(listener, _on_sample_rejected);
+                dds_lset_liveliness_changed(listener, _on_liveliness_changed);
+                dds_lset_requested_deadline_missed(listener, _on_requested_deadline_missed);
+                dds_lset_requested_incompatible_qos(listener, _on_requested_incompatible_qos);
+                auto& [topic_entity, topic_listener, callback] = dds._topic[{domainid, topic}];
                 dds_entity_t reader = dds_create_reader(
                     dds.domain(domainid),
                     topic_entity,
@@ -302,7 +322,11 @@ class DDS final {
                 auto topic_iterator = dds._topic.find({domainid, topic});
                 if(topic_iterator == dds._topic.end()) throw dds._unknow_topic(topic, domainid);
                 dds_listener_t* listener = dds_create_listener(NULL);
-                auto& [topic_entity, callback] = dds._topic[{domainid, topic}];
+                dds_lset_publication_matched(listener, _on_publication_matched);
+                dds_lset_liveliness_lost(listener, _on_liveliness_lost);
+                dds_lset_offered_deadline_missed(listener, _on_offered_deadline_missed);
+                dds_lset_offered_incompatible_qos(listener, _on_offered_incompatible_qos);
+                auto& [topic_entity, topic_listener, callback] = dds._topic[{domainid, topic}];
                 dds_entity_t writer = dds_create_writer(
                     dds.domain(domainid),
                     topic_entity,
@@ -365,7 +389,7 @@ class DDS final {
             
             auto iterator = dds._topic.find({domainid, topic});
             if(iterator == dds._topic.end()) throw dds._unknow_topic(topic, domainid);
-            auto& [topic_entity, old_callback] = dds._topic[{domainid, topic}];
+            auto& [topic_entity, listener, old_callback] = dds._topic[{domainid, topic}];
             old_callback = callback;
 
         }
@@ -420,15 +444,47 @@ class DDS final {
 
         private:
 
-            static void _on_data_available(dds_entity_t reader, void* arg) {
-
-                DDS& dds = DDS::instance();
-
-                auto& [domainid, topic] = dds._entities[reader];
-                auto& [reader_entity, listener, callback] = dds._reader[{domainid, topic}];
-                if(callback) callback(READER_ON_DATA_AVAILABLE, domainid, topic.c_str());
-                
-            }
+#define __DDSCTX_EVENT_CALLBACK(ENTITY, EVENT)\
+    DDS& dds = DDS::instance();\
+    auto& [domainid, topic_name] = dds._entities[ENTITY];\
+    auto& [ENTITY_entity, listener, callback] = dds._##ENTITY[{domainid, topic_name}];\
+    if(callback) callback(EVENT, domainid, topic_name.c_str());
+            static void _on_inconsistent_topic
+            (dds_entity_t topic, const dds_inconsistent_topic_status_t status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(topic, DDSCTX_TOPIC_ON_INCONSISTENT_TOPIC) }
+            static void _on_data_available
+            (dds_entity_t reader, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_DATA_AVAILABLE) }
+            static void _on_subscription_matched
+            (dds_entity_t reader, const dds_subscription_matched_status_t  status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_SUBSCRIPTION_MATCHED) }
+            static void _on_sample_lost
+            (dds_entity_t reader, const dds_sample_lost_status_t status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_SAMPLE_LOST) }
+            static void _on_sample_rejected
+            (dds_entity_t reader, const dds_sample_rejected_status_t status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_SAMPLE_REJECTED) }
+            static void _on_liveliness_changed
+            (dds_entity_t reader, const dds_liveliness_changed_status_t status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_LIVELINESS_CHANGED) }
+            static void _on_requested_deadline_missed
+            (dds_entity_t reader, const dds_requested_deadline_missed_status_t status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_REQUESTED_DEADLINE_MISSED) }
+            static void _on_requested_incompatible_qos
+            (dds_entity_t reader, const dds_requested_incompatible_qos_status_t status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_REQUESTED_INCOMPATIBLE_QOS) }
+            static void _on_publication_matched
+            (dds_entity_t writer, const dds_publication_matched_status_t  status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_PUBLICATION_MATCHED) }
+            static void _on_liveliness_lost
+            (dds_entity_t writer, const dds_liveliness_lost_status_t status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_LIVELINESS_LOST) }
+            static void _on_offered_deadline_missed
+            (dds_entity_t writer, const dds_offered_deadline_missed_status_t status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_OFFERED_DEADLINE_MISSED) }
+            static void _on_offered_incompatible_qos
+            (dds_entity_t writer, const dds_offered_incompatible_qos_status_t status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_OFFERED_INCOMPATIBLE_QOS) }
 
 };
 
