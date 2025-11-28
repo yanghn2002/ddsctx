@@ -53,6 +53,11 @@ extern void ddsctx_read(
     const char*,
     const int
 );
+extern void ddsctx_take(
+    const dds_domainid_t,
+    const char*,
+    const int
+);
 extern void ddsctx_set_topic_callback(
     const dds_domainid_t,
     const char*,
@@ -378,6 +383,25 @@ class DDS final {
             if(read < 0) throw DDSError("dds_read", read);
 
         }
+        
+        static void take(
+            const dds_domainid_t domainid,
+            const std::string& topic,
+            const int sample
+        ) {
+
+            DDS& dds = DDS::instance();
+
+            auto reader_iterator = dds._reader.find({domainid, topic});
+            if(reader_iterator == dds._reader.end()) throw dds._unknow_topic(topic, domainid);
+            auto sample_iterator = dds._sample.find(sample);
+            if(sample_iterator == dds._sample.end()) throw dds._unknow_sample(sample);
+            auto& [reader, listener, callback] = dds._reader[{domainid, topic}];
+            Sample& sample_obj = dds._sample[sample];
+            dds_return_t take = dds_take(reader, sample_obj.sample(), sample_obj.info(), 1, 1);
+            if(read < 0) throw DDSError("dds_take", take);
+
+        }
 
         static void set_topic_callback(
             const dds_domainid_t domainid,
@@ -523,6 +547,11 @@ extern "C" void ddsctx_read(
     const char* topic,
     const int sample
 )   { return DDS::read(domainid, topic, sample); }
+extern "C" void ddsctx_take(
+    const dds_domainid_t domainid,
+    const char* topic,
+    const int sample
+)   { return DDS::take(domainid, topic, sample); }
 extern "C" void ddsctx_set_topic_callback(
     const dds_domainid_t domainid,
     const char* topic,

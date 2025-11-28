@@ -41,7 +41,7 @@ int main_sub(int argc, char* argv[]) {
     
     while(1) {
         if(reader_have_data) {
-            ddsctx_read(DDS_DOMAIN_DEFAULT, "topic_demo", demomsg_0);
+            ddsctx_take(DDS_DOMAIN_DEFAULT, "topic_demo", demomsg_0);
             DemoMsg* msg = (DemoMsg*)ddsctx_get_data(demomsg_0);
             if(ddsctx_get_valid(demomsg_0)) printf("SUB: data=%s\n", msg->data);
             reader_have_data = 0;
