@@ -18,6 +18,8 @@ enum ddsctx_event {
     DDSCTX_WRITER_ON_OFFERED_INCOMPATIBLE_QOS   = 0x23,
 };
 
+typedef void(ddsctx_callback_t)(int, const dds_domainid_t, const char*, const void*);
+
 #ifndef __cplusplus
 
 extern void ddsctx_sample(
@@ -61,17 +63,17 @@ extern void ddsctx_take(
 extern void ddsctx_set_topic_callback(
     const dds_domainid_t,
     const char*,
-    void(callback)(int, const dds_domainid_t, const char*)
+    ddsctx_callback_t callback;
 );
 extern void ddsctx_set_reader_callback(
     const dds_domainid_t,
     const char*,
-    void(callback)(int, const dds_domainid_t, const char*)
+    ddsctx_callback_t callback;
 );
 extern void ddsctx_set_writer_callback(
     const dds_domainid_t,
     const char*,
-    void(callback)(int, const dds_domainid_t, const char*)
+    ddsctx_callback_t callback;
 );
 extern void* ddsctx_get_data(const int);
 extern int ddsctx_get_valid(const int);
@@ -146,18 +148,15 @@ class DDS final {
     std::map<dds_domainid_t, dds_entity_t> _domain;
     std::map<
         std::pair<dds_domainid_t, std::string>,
-        std::tuple<dds_entity_t, dds_listener_t*,
-            void(*)(int, const dds_domainid_t, const char*)>
+        std::tuple<dds_entity_t, dds_listener_t*, ddsctx_callback_t*>
     > _topic;
     std::map<
         std::pair<dds_domainid_t, std::string>,
-        std::tuple<dds_entity_t, dds_listener_t*,
-            void(*)(int, const dds_domainid_t, const char*)>
+        std::tuple<dds_entity_t, dds_listener_t*, ddsctx_callback_t*>
     > _reader;
     std::map<
         std::pair<dds_domainid_t, std::string>,
-        std::tuple<dds_entity_t, dds_listener_t*,
-            void(*)(int, const dds_domainid_t, const char*)>
+        std::tuple<dds_entity_t, dds_listener_t*, ddsctx_callback_t*>
     > _writer;
     std::map<dds_entity_t, std::pair<dds_domainid_t, std::string>> _entities;     
     
@@ -406,7 +405,7 @@ class DDS final {
         static void set_topic_callback(
             const dds_domainid_t domainid,
             const std::string& topic,
-            void(callback)(int, const dds_domainid_t, const char*)
+            void(callback)(int, const dds_domainid_t, const char*, const void*)
         ) {
             
             DDS& dds = DDS::instance();
@@ -421,7 +420,7 @@ class DDS final {
         static void set_reader_callback(
             const dds_domainid_t domainid,
             const std::string& topic,
-            void(callback)(int, const dds_domainid_t, const char*)
+            void(callback)(int, const dds_domainid_t, const char*, const void*)
         ) {
             
             DDS& dds = DDS::instance();
@@ -436,7 +435,7 @@ class DDS final {
         static void set_writer_callback(
             const dds_domainid_t domainid,
             const std::string& topic,
-            void(callback)(int, const dds_domainid_t, const char*)
+            void(callback)(int, const dds_domainid_t, const char*, const void*)
         ) {
             
             DDS& dds = DDS::instance();
@@ -468,47 +467,47 @@ class DDS final {
 
         private:
 
-#define __DDSCTX_EVENT_CALLBACK(ENTITY, EVENT)\
+#define __DDSCTX_EVENT_CALLBACK(ENTITY, EVENT, DATA)\
     DDS& dds = DDS::instance();\
     auto& [domainid, topic_name] = dds._entities[ENTITY];\
     auto& [ENTITY_entity, listener, callback] = dds._##ENTITY[{domainid, topic_name}];\
-    if(callback) callback(EVENT, domainid, topic_name.c_str());
+    if(callback) callback(EVENT, domainid, topic_name.c_str(), DATA);
             static void _on_inconsistent_topic
             (dds_entity_t topic, const dds_inconsistent_topic_status_t status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(topic, DDSCTX_TOPIC_ON_INCONSISTENT_TOPIC) }
+            { __DDSCTX_EVENT_CALLBACK(topic, DDSCTX_TOPIC_ON_INCONSISTENT_TOPIC, &status) }
             static void _on_data_available
             (dds_entity_t reader, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_DATA_AVAILABLE) }
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_DATA_AVAILABLE, NULL) }
             static void _on_subscription_matched
-            (dds_entity_t reader, const dds_subscription_matched_status_t  status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_SUBSCRIPTION_MATCHED) }
+            (dds_entity_t reader, const dds_subscription_matched_status_t status, void* arg)
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_SUBSCRIPTION_MATCHED, &status) }
             static void _on_sample_lost
             (dds_entity_t reader, const dds_sample_lost_status_t status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_SAMPLE_LOST) }
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_SAMPLE_LOST, &status) }
             static void _on_sample_rejected
             (dds_entity_t reader, const dds_sample_rejected_status_t status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_SAMPLE_REJECTED) }
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_SAMPLE_REJECTED, &status) }
             static void _on_liveliness_changed
             (dds_entity_t reader, const dds_liveliness_changed_status_t status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_LIVELINESS_CHANGED) }
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_LIVELINESS_CHANGED, &status) }
             static void _on_requested_deadline_missed
             (dds_entity_t reader, const dds_requested_deadline_missed_status_t status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_REQUESTED_DEADLINE_MISSED) }
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_REQUESTED_DEADLINE_MISSED, &status) }
             static void _on_requested_incompatible_qos
             (dds_entity_t reader, const dds_requested_incompatible_qos_status_t status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_REQUESTED_INCOMPATIBLE_QOS) }
+            { __DDSCTX_EVENT_CALLBACK(reader, DDSCTX_READER_ON_REQUESTED_INCOMPATIBLE_QOS, &status) }
             static void _on_publication_matched
             (dds_entity_t writer, const dds_publication_matched_status_t  status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_PUBLICATION_MATCHED) }
+            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_PUBLICATION_MATCHED, &status) }
             static void _on_liveliness_lost
             (dds_entity_t writer, const dds_liveliness_lost_status_t status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_LIVELINESS_LOST) }
+            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_LIVELINESS_LOST, &status) }
             static void _on_offered_deadline_missed
             (dds_entity_t writer, const dds_offered_deadline_missed_status_t status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_OFFERED_DEADLINE_MISSED) }
+            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_OFFERED_DEADLINE_MISSED, &status) }
             static void _on_offered_incompatible_qos
             (dds_entity_t writer, const dds_offered_incompatible_qos_status_t status, void* arg)
-            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_OFFERED_INCOMPATIBLE_QOS) }
+            { __DDSCTX_EVENT_CALLBACK(writer, DDSCTX_WRITER_ON_OFFERED_INCOMPATIBLE_QOS, &status) }
 
 };
 
@@ -555,17 +554,17 @@ extern "C" void ddsctx_take(
 extern "C" void ddsctx_set_topic_callback(
     const dds_domainid_t domainid,
     const char* topic,
-    void(callback)(int, const dds_domainid_t, const char*)
+    ddsctx_callback_t callback
 )   { DDS::set_topic_callback(domainid, topic, callback); }
 extern "C" void ddsctx_set_reader_callback(
     const dds_domainid_t domainid,
     const char* topic,
-    void(callback)(int, const dds_domainid_t, const char*)
+    ddsctx_callback_t callback
 )   { DDS::set_reader_callback(domainid, topic, callback); }
 extern "C" void ddsctx_set_writer_callback(
     const dds_domainid_t domainid,
     const char* topic,
-    void(callback)(int, const dds_domainid_t, const char*)
+    ddsctx_callback_t callback
 )   { DDS::set_writer_callback(domainid, topic, callback); }
 extern "C" void* ddsctx_get_data(const int sample)
     { return DDS::get_data(sample); }
