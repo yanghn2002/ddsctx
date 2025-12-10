@@ -1,6 +1,14 @@
 #ifndef __DDSCTX_HPP
 #define __DDSCTX_HPP
 
+#ifdef DDSCTX_OBJECT
+    #ifdef __cplusplus
+        #define __DDSCTX_OBJECT
+    #else
+        #error DDSCTX_OBJECT defined without __cplusplus
+    #endif
+#endif
+
 #include <dds/dds.h>
 
 enum ddsctx_event {
@@ -20,7 +28,10 @@ enum ddsctx_event {
 
 typedef void(ddsctx_callback_t)(int, const dds_domainid_t, const char*, const void*);
 
-#ifndef __cplusplus
+#ifndef __DDSCTX_OBJECT
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 extern void ddsctx_sample(
     const int,
@@ -78,7 +89,10 @@ extern void ddsctx_set_writer_callback(
 extern void* ddsctx_get_data(const int);
 extern int ddsctx_get_valid(const int);
 
-#else//__cplusplus
+#ifdef __cplusplus
+}
+#endif
+#else//__DDSCTX_OBJECT
 
 #include <map>
 #include <string>
@@ -571,6 +585,6 @@ extern "C" void* ddsctx_get_data(const int sample)
 extern "C" int ddsctx_get_valid(const int sample)
     { return DDS::get_valid(sample); }
 
-#endif//__cplusplus
+#endif//__DDSCTX_OBJECT
 
 #endif//__DDSCTX_HPP

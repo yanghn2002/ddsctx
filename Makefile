@@ -22,7 +22,7 @@ demo.o: $(BUILD_DIR) demo.idl
 	$(CC) -c $(BUILD_DIR)/demo.c -o $(BUILD_DIR)/demo.o
 
 libddsctx.so: $(BUILD_DIR) ddsctx.hpp
-	$(CXX) -x c++ -fPIC ddsctx.hpp $(CXXFLAGS) -o $(BUILD_DIR)/libddsctx.so -shared $(LDFLAGS)
+	$(CXX) -fPIC ddsctx.cpp $(CXXFLAGS) -o $(BUILD_DIR)/libddsctx.so -shared $(LDFLAGS)
 
 $(BUILD_DIR):
 	@rm -rfv $(BUILD_DIR)
