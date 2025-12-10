@@ -7,12 +7,12 @@
 int reader_have_data = 0;
 char data_buffer[256];
 
-void topic_callback(int event, const dds_domainid_t domainid, const char* topic) {
+void topic_callback(int event, const dds_domainid_t domainid, const char* topic, const void* data) {
     switch(event) {
         default: printf("TOPIC: \\x%x\n", event);
     }
 }
-void reader_callback(int event, const dds_domainid_t domainid, const char* topic) {
+void reader_callback(int event, const dds_domainid_t domainid, const char* topic, const void* data) {
     switch(event) {
         case DDSCTX_READER_ON_DATA_AVAILABLE:
             reader_have_data = 1;
@@ -23,7 +23,7 @@ void reader_callback(int event, const dds_domainid_t domainid, const char* topic
         default: printf("READER: \\x%x\n", event);
     }
 }
-void writer_callback(int event, const dds_domainid_t domainid, const char* topic) {
+void writer_callback(int event, const dds_domainid_t domainid, const char* topic, const void* data) {
     switch(event) {
         case DDSCTX_WRITER_ON_PUBLICATION_MATCHED:
             printf("PUBLICATION_MATCHED: domain=%d, topic=%s\n", domainid, topic);
