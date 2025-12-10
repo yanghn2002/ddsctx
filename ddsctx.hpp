@@ -63,17 +63,17 @@ extern void ddsctx_take(
 extern void ddsctx_set_topic_callback(
     const dds_domainid_t,
     const char*,
-    ddsctx_callback_t callback;
+    ddsctx_callback_t callback
 );
 extern void ddsctx_set_reader_callback(
     const dds_domainid_t,
     const char*,
-    ddsctx_callback_t callback;
+    ddsctx_callback_t callback
 );
 extern void ddsctx_set_writer_callback(
     const dds_domainid_t,
     const char*,
-    ddsctx_callback_t callback;
+    ddsctx_callback_t callback
 );
 extern void* ddsctx_get_data(const int);
 extern int ddsctx_get_valid(const int);
