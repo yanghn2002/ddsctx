@@ -115,6 +115,8 @@ class DDSError: public std::runtime_error {
 
 };
 
+#define DDSCTX_INSTANCE(X) DDS& X = DDS::instance()
+
 class DDS final {
 
     class Sample final {
@@ -178,14 +180,8 @@ class DDS final {
     ~DDS(void) {
         for(auto& [domainid, participant]: _domain) dds_delete(participant);
         for(auto& [name, qos]: _qos) dds_delete_qos(qos);
-        for(auto& [demainid_topic, _]: _reader) {
-            auto& [reader, listener, callback] = _;
-            dds_delete_listener(listener);
-        }
-        for(auto& [demainid_topic, _]: _writer) {
-            auto& [writer, listener, callback] = _;
-            dds_delete_listener(listener);
-        }
+        for(auto& [demainid_topic, _]: _reader) dds_delete_listener(std::get<1>(_));
+        for(auto& [demainid_topic, _]: _writer) dds_delete_listener(std::get<1>(_));
     }
 
     std::logic_error _unknow_sample(const int index) {
@@ -226,30 +222,26 @@ class DDS final {
             const dds_topic_descriptor_t* descriptor
         ) {
 
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
 
-            auto iterator = dds._sample.find(index);
-            if(iterator == dds._sample.end())
-                dds._sample[index](size, descriptor);
+            if(!dds._sample.count(index)) dds._sample[index](size, descriptor);
 
         }
         
         static dds_qos_t* qos(const std::string& name) {
+            
+            DDSCTX_INSTANCE(dds);
 
-            DDS& dds = DDS::instance();
-
-            auto iterator = dds._qos.find(name);
-            if(iterator == dds._qos.end()) dds._qos[name] = dds_create_qos();
+            if(!dds._qos.count(name)) dds._qos[name] = dds_create_qos();
             return dds._qos[name];
 
         }
 
         static dds_entity_t domain(const dds_domainid_t domainid) {
 
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
 
-            auto iterator = dds._domain.find(domainid);
-            if(iterator == dds._domain.end()) {
+            if(!dds._domain.count(domainid)) {
                 dds_entity_t participant = dds_create_participant(domainid, NULL, NULL);
                 if(participant < 0) throw DDSError("dds_create_participant", participant);
                 dds._domain[domainid] = participant;
@@ -265,10 +257,9 @@ class DDS final {
             const std::string& qos
         ) {
 
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
 
-            auto iterator = dds._topic.find({domainid, name});
-            if(iterator == dds._topic.end()) {
+            if(!dds._topic.count({domainid, name})) {
                 dds_listener_t* listener = dds_create_listener(NULL);
                 dds_lset_inconsistent_topic(listener, _on_inconsistent_topic);
                 dds_entity_t topic = dds_create_topic(
@@ -282,10 +273,7 @@ class DDS final {
                 dds._topic[{domainid, name}] = {topic, listener, nullptr};
                 dds._entities[topic] = {domainid, name};
                 return topic;
-            } else {
-                auto& [topic, listener, callback] = dds._topic[{domainid, name}];
-                return topic;
-            }
+            } else return std::get<0>(dds._topic[{domainid, name}]);
 
         }
 
@@ -295,12 +283,10 @@ class DDS final {
             const std::string& qos
         ) {
 
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
 
-            auto iterator = dds._reader.find({domainid, topic});
-            if(iterator == dds._reader.end()) {
-                auto topic_iterator = dds._topic.find({domainid, topic});
-                if(topic_iterator == dds._topic.end()) throw dds._unknow_topic(topic, domainid);
+            if(!dds._reader.count({domainid, topic})) {
+                if(!dds._topic.count({domainid, topic})) throw dds._unknow_topic(topic, domainid);
                 dds_listener_t* listener = dds_create_listener(NULL);
                 dds_lset_data_available(listener, _on_data_available);
                 dds_lset_subscription_matched(listener, _on_subscription_matched);
@@ -320,10 +306,7 @@ class DDS final {
                 dds._reader[{domainid, topic}] = {reader, listener, nullptr};
                 dds._entities[reader] = {domainid, topic};
                 return reader;
-            } else {
-                auto& [reader, listener, callback] = dds._reader[{domainid, topic}];
-                return reader;
-            }
+            } else return std::get<0>(dds._reader[{domainid, topic}]);
 
         }
 
@@ -333,12 +316,10 @@ class DDS final {
             const std::string& qos
         ) {
 
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
 
-            auto iterator = dds._writer.find({domainid, topic});
-            if(iterator == dds._writer.end()) {
-                auto topic_iterator = dds._topic.find({domainid, topic});
-                if(topic_iterator == dds._topic.end()) throw dds._unknow_topic(topic, domainid);
+            if(!dds._writer.count({domainid, topic})) {
+                if(!dds._topic.count({domainid, topic})) throw dds._unknow_topic(topic, domainid);
                 dds_listener_t* listener = dds_create_listener(NULL);
                 dds_lset_publication_matched(listener, _on_publication_matched);
                 dds_lset_liveliness_lost(listener, _on_liveliness_lost);
@@ -355,10 +336,7 @@ class DDS final {
                 dds._writer[{domainid, topic}] = {writer, listener, nullptr};
                 dds._entities[writer] = {domainid, topic};
                 return writer;
-            } else {
-                auto& [writer, listener, callback] = dds._writer[{domainid, topic}];
-                return writer;
-            }
+            } else return std::get<0>(dds._writer[{domainid, topic}]);
 
         }
         
@@ -368,12 +346,13 @@ class DDS final {
             void* data
         ) {
 
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
 
-            auto iterator = dds._writer.find({domainid, topic});
-            if(iterator == dds._writer.end()) throw dds._unknow_topic(topic, domainid);
-            auto& [writer, listener, callback] = dds._writer[{domainid, topic}];
-            dds_return_t write = dds_write(writer, data);
+            if(!dds._writer.count({domainid, topic})) throw dds._unknow_topic(topic, domainid);
+            dds_return_t write = dds_write(
+                std::get<0>(dds._writer[{domainid, topic}]),
+                data
+            );
             if(write < 0) throw DDSError("dds_write", write);
 
         }
@@ -384,15 +363,17 @@ class DDS final {
             const int sample
         ) {
 
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
 
-            auto reader_iterator = dds._reader.find({domainid, topic});
-            if(reader_iterator == dds._reader.end()) throw dds._unknow_topic(topic, domainid);
-            auto sample_iterator = dds._sample.find(sample);
-            if(sample_iterator == dds._sample.end()) throw dds._unknow_sample(sample);
-            auto& [reader, listener, callback] = dds._reader[{domainid, topic}];
+            if(!dds._reader.count({domainid, topic})) throw dds._unknow_topic(topic, domainid);
+            if(!dds._sample.count(sample)) throw dds._unknow_sample(sample);
             Sample& sample_obj = dds._sample[sample];
-            dds_return_t read = dds_read(reader, sample_obj.sample(), sample_obj.info(), 1, 1);
+            dds_return_t read = dds_read(
+                std::get<0>(dds._reader[{domainid, topic}]),
+                sample_obj.sample(),
+                sample_obj.info(),
+                1, 1
+            );
             if(read < 0) throw DDSError("dds_read", read);
 
         }
@@ -403,15 +384,17 @@ class DDS final {
             const int sample
         ) {
 
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
 
-            auto reader_iterator = dds._reader.find({domainid, topic});
-            if(reader_iterator == dds._reader.end()) throw dds._unknow_topic(topic, domainid);
-            auto sample_iterator = dds._sample.find(sample);
-            if(sample_iterator == dds._sample.end()) throw dds._unknow_sample(sample);
-            auto& [reader, listener, callback] = dds._reader[{domainid, topic}];
+            if(!dds._reader.count({domainid, topic})) throw dds._unknow_topic(topic, domainid);
+            if(!dds._sample.count(sample)) throw dds._unknow_sample(sample);
             Sample& sample_obj = dds._sample[sample];
-            dds_return_t take = dds_take(reader, sample_obj.sample(), sample_obj.info(), 1, 1);
+            dds_return_t take = dds_take(
+                std::get<0>(dds._reader[{domainid, topic}]),
+                sample_obj.sample(),
+                sample_obj.info(),
+                1, 1
+            );
             if(read < 0) throw DDSError("dds_take", take);
 
         }
@@ -422,12 +405,10 @@ class DDS final {
             void(callback)(int, const dds_domainid_t, const char*, const void*)
         ) {
             
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
             
-            auto iterator = dds._topic.find({domainid, topic});
-            if(iterator == dds._topic.end()) throw dds._unknow_topic(topic, domainid);
-            auto& [topic_entity, listener, old_callback] = dds._topic[{domainid, topic}];
-            old_callback = callback;
+            if(!dds._topic.count({domainid, topic})) throw dds._unknow_topic(topic, domainid);
+            std::get<2>(dds._topic[{domainid, topic}]) = callback;
 
         }
 
@@ -437,12 +418,10 @@ class DDS final {
             void(callback)(int, const dds_domainid_t, const char*, const void*)
         ) {
             
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
             
-            auto iterator = dds._reader.find({domainid, topic});
-            if(iterator == dds._reader.end()) throw dds._unknow_reader(topic, domainid);
-            auto& [reader, listener, old_callback] = dds._reader[{domainid, topic}];
-            old_callback = callback;
+            if(!dds._reader.count({domainid, topic})) throw dds._unknow_reader(topic, domainid);
+            std::get<2>(dds._reader[{domainid, topic}]) = callback;
 
         }
 
@@ -452,39 +431,35 @@ class DDS final {
             void(callback)(int, const dds_domainid_t, const char*, const void*)
         ) {
             
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
             
-            auto iterator = dds._writer.find({domainid, topic});
-            if(iterator == dds._writer.end()) throw dds._unknow_writer(topic, domainid);
-            auto& [writer, listener, old_callback] = dds._writer[{domainid, topic}];
-            old_callback = callback;
+            if(!dds._writer.count({domainid, topic})) throw dds._unknow_writer(topic, domainid);
+            std::get<2>(dds._writer[{domainid, topic}]) = callback;
 
         }
 
         static void* get_data(int sample) {
 
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
             
-            auto iterator = dds._sample.find(sample);
-            if(iterator == dds._sample.end()) throw dds._unknow_sample(sample);
+            if(!dds._sample.count(sample)) throw dds._unknow_sample(sample);
             return dds._sample[sample].sample()[0];
         }
 
         static int get_valid(int sample) {
             
-            DDS& dds = DDS::instance();
+            DDSCTX_INSTANCE(dds);
             
-            auto iterator = dds._sample.find(sample);
-            if(iterator == dds._sample.end()) throw dds._unknow_sample(sample);
+            if(!dds._sample.count(sample)) throw dds._unknow_sample(sample);
             return dds._sample[sample].info()[0].valid_data == 1 ? 1 : 0;
         }
 
         private:
 
 #define __DDSCTX_EVENT_CALLBACK(ENTITY, EVENT, DATA)\
-    DDS& dds = DDS::instance();\
+    DDSCTX_INSTANCE(dds);\
     auto& [domainid, topic_name] = dds._entities[ENTITY];\
-    auto& [ENTITY_entity, listener, callback] = dds._##ENTITY[{domainid, topic_name}];\
+    auto& callback = std::get<2>(dds._##ENTITY[{domainid, topic_name}]);\
     if(callback) callback(EVENT, domainid, topic_name.c_str(), DATA);
             static void _on_inconsistent_topic
             (dds_entity_t topic, const dds_inconsistent_topic_status_t status, void* arg)
